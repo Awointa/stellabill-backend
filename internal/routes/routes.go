@@ -3,10 +3,12 @@ package routes
 import (
 	"github.com/gin-gonic/gin"
 	"stellarbill-backend/internal/handlers"
+	"stellarbill-backend/internal/middleware"
 )
 
 func Register(r *gin.Engine) {
 	r.Use(corsMiddleware())
+	r.Use(middleware.RequestID())
 
 	api := r.Group("/api")
 	{
