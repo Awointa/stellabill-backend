@@ -121,6 +121,50 @@ All JSON responses. CORS allowed for `*` origin with common methods and headers.
 
 ---
 
+## CI / Quality gates
+
+Every push and pull request runs the following checks automatically via GitHub Actions (`.github/workflows/ci.yml`):
+
+| Step | Command |
+|------|---------|
+| Build | `go build ./...` |
+| Vet | `go vet ./...` |
+| Test + coverage | `go test ./internal/... -covermode=atomic -coverpkg=./internal/...` |
+| Coverage threshold | `./scripts/check-coverage.sh coverage.out 95` (≥ 95 % on `internal/`) |
+
+Coverage artifacts (`coverage.out`) are uploaded and retained for 14 days on every run.
+
+### Run checks locally before opening a PR
+
+```bash
+# 1. Build
+go build ./...
+
+# 2. Vet
+go vet ./...
+
+# 3. Test with coverage (internal packages only — cmd/server is the process entrypoint)
+go test ./internal/... \
+  -covermode=atomic \
+  -coverpkg=./internal/... \
+  -coverprofile=coverage.out \
+  -count=1 \
+  -timeout=60s
+
+# 4. Enforce the 95 % threshold
+./scripts/check-coverage.sh coverage.out 95
+
+# 5. (Optional) Browse the HTML report
+go tool cover -html=coverage.out
+```
+
+> **Why `./internal/...` and not `./...`?**  
+> `cmd/server/main.go` is the process entry point (`main()`). Go cannot instrument it as a unit-testable package, so it always reports 0 % and would drag the total below the threshold. All business logic lives in `internal/`, which is what the threshold enforces.
+
+> **Security note:** Never commit `.env`, JWT secrets, or database credentials. The CI workflow contains no secrets; configure them via your host's environment or a secrets manager.
+
+---
+
 ## Contributing (open source)
 
 We welcome contributions from the community. Below is a short guide to get you from “first look” to “merged change”.
@@ -189,18 +233,26 @@ We welcome contributions from the community. Below is a short guide to get you f
 
 ```
 stellabill-backend/
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # CI: build, vet, test, coverage threshold
 ├── cmd/
 │   └── server/
 │       └── main.go          # Entry point, Gin router, server start
 ├── internal/
 │   ├── config/
-│   │   └── config.go        # Loads ENV, PORT, DATABASE_URL, JWT_SECRET
+│   │   ├── config.go        # Loads ENV, PORT, DATABASE_URL, JWT_SECRET
+│   │   └── config_test.go
 │   ├── handlers/
 │   │   ├── health.go        # GET /api/health
 │   │   ├── plans.go         # GET /api/plans
-│   │   └── subscriptions.go # GET /api/subscriptions, /api/subscriptions/:id
+│   │   ├── subscriptions.go # GET /api/subscriptions, /api/subscriptions/:id
+│   │   └── handlers_test.go
 │   └── routes/
-│       └── routes.go        # Registers routes and CORS middleware
+│       ├── routes.go        # Registers routes and CORS middleware
+│       └── routes_test.go
+├── scripts/
+│   └── check-coverage.sh    # Enforces minimum coverage threshold
 ├── go.mod
 ├── go.sum
 ├── .gitignore
