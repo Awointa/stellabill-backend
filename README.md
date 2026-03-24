@@ -1,6 +1,6 @@
 # Stellabill Backend
 
-Go (Gin) API backend for Stellabill — subscription and billing plans API. This repo is backend-only; a separate frontend consumes these APIs.
+Go (Gin) API backend for Stellabill - subscription and billing plans API. This repo is backend-only; a separate frontend consumes these APIs.
 
 ---
 
@@ -11,6 +11,7 @@ Go (Gin) API backend for Stellabill — subscription and billing plans API. This
 - [Local setup](#local-setup)
 - [Configuration](#configuration)
 - [API reference](#api-reference)
+- [Dependency Injection](#dependency-injection)
 - [Contributing (open source)](#contributing-open-source)
 - [Project layout](#project-layout)
 - [License](#license)
@@ -29,9 +30,9 @@ Go (Gin) API backend for Stellabill — subscription and billing plans API. This
 
 This service is the **backend only**. A separate frontend (or any client) can:
 
-- **Health check** — `GET /api/health` to verify the API is up.
-- **Plans** — `GET /api/plans` to list billing plans (id, name, amount, currency, interval, description). Currently returns an empty list; DB integration is planned.
-- **Subscriptions** — `GET /api/subscriptions` to list subscriptions and `GET /api/subscriptions/:id` to fetch one. Responses include plan_id, customer, status, amount, interval, next_billing. Currently placeholder/mock data; DB integration is planned.
+- **Health check** - `GET /api/health` to verify the API is up.
+- **Plans** - `GET /api/plans` to list billing plans (id, name, amount, currency, interval, description). Currently returns an empty list; DB integration is planned.
+- **Subscriptions** - `GET /api/subscriptions` to list subscriptions and `GET /api/subscriptions/:id` to fetch one. Responses include plan_id, customer, status, amount, interval, next_billing. Currently placeholder/mock data; DB integration is planned.
 
 CORS is enabled for all origins in development so a frontend on another port or domain can call these endpoints.
 
@@ -41,12 +42,10 @@ CORS is enabled for all origins in development so a frontend on another port or 
 
 ### Prerequisites
 
-- **Go 1.22 or later**  
-  - Check: `go version`  
+- **Go 1.22 or later**
+  - Check: `go version`
   - Install: [https://go.dev/doc/install](https://go.dev/doc/install)
-
 - **Git** (for cloning and contributing)
-
 - **PostgreSQL** (optional for now; app runs without it using default config; DB will be used when persistence is added)
 
 ### 1. Clone the repository
@@ -64,17 +63,17 @@ go mod download
 
 ### 3. (Optional) Environment variables
 
-Create a `.env` file in the project root (do not commit it; it’s in `.gitignore`):
+Create a `.env` file in the project root (do not commit it; it is in `.gitignore`):
 
 ```bash
-# Optional — defaults shown
+# Optional - defaults shown
 ENV=development
 PORT=8080
 DATABASE_URL=postgres://localhost/stellarbill?sslmode=disable
 JWT_SECRET=change-me-in-production
 ```
 
-Or export them in your shell. The app will run with the defaults if you don’t set anything.
+Or export them in your shell. The app will run with the defaults if you do not set anything.
 
 ### 4. Run the server
 
@@ -100,9 +99,9 @@ curl http://localhost:8080/api/health
 | `ENV`          | `development`                                | Environment (e.g. production)  |
 | `PORT`         | `8080`                                       | HTTP server port               |
 | `DATABASE_URL` | `postgres://localhost/stellarbill?sslmode=disable` | PostgreSQL connection string   |
-| `JWT_SECRET`   | `change-me-in-production`                     | Secret for JWT (change in prod)|
+| `JWT_SECRET`   | `change-me-in-production`                    | Secret for JWT (change in prod)|
 
-In production, set these via your host’s environment or secrets manager; do not commit secrets.
+In production, set these via your host's environment or secrets manager; do not commit secrets.
 
 ---
 
@@ -110,20 +109,39 @@ In production, set these via your host’s environment or secrets manager; do no
 
 Base URL (local): `http://localhost:8080`
 
-| Method | Path                     | Description              |
-|--------|--------------------------|--------------------------|
-| GET    | `/api/health`            | Health check             |
-| GET    | `/api/plans`             | List billing plans       |
-| GET    | `/api/subscriptions`     | List subscriptions       |
-| GET    | `/api/subscriptions/:id` | Get one subscription     |
+| Method | Path                     | Description          |
+|--------|--------------------------|----------------------|
+| GET    | `/api/health`            | Health check         |
+| GET    | `/api/plans`             | List billing plans   |
+| GET    | `/api/subscriptions`     | List subscriptions   |
+| GET    | `/api/subscriptions/:id` | Get one subscription |
 
 All JSON responses. CORS allowed for `*` origin with common methods and headers.
 
 ---
 
+## Dependency Injection
+
+Handlers are constructed with explicit dependencies instead of reaching into package-level state. That keeps startup wiring easy to review and makes unit tests cheap to write because services can be replaced with focused mocks.
+
+Current boundaries:
+
+- `internal/services` defines the interfaces and default placeholder implementations used by the API.
+- `internal/handlers` validates constructor input and translates service results into HTTP responses.
+- `internal/routes` requires an injected handler bundle and returns an error on nil wiring instead of registering a partially working router.
+- `cmd/server` is responsible for composing concrete services and failing fast if startup wiring is incomplete.
+
+Security notes:
+
+- Constructor validation prevents nil dependencies from reaching request handling paths, which avoids panic-driven denial of service during misconfigured startup.
+- Route registration returns errors for missing router or handler wiring so invalid startup state fails closed.
+- Service interfaces keep handlers decoupled from future storage implementations, making authorization and data-access checks easier to test in isolation.
+
+---
+
 ## Contributing (open source)
 
-We welcome contributions from the community. Below is a short guide to get you from “first look” to “merged change”.
+We welcome contributions from the community. Below is a short guide to get you from "first look" to "merged change".
 
 ### Code of conduct
 
@@ -132,43 +150,36 @@ We welcome contributions from the community. Below is a short guide to get you f
 
 ### How to contribute
 
-1. **Open an issue**  
-   - Bug: describe what you did, what you expected, and what happened.  
+1. **Open an issue**
+   - Bug: describe what you did, what you expected, and what happened.
    - Feature: describe the goal and why it helps.
-
-2. **Fork and clone**  
+2. **Fork and clone**
    - Fork the repo on GitHub, then clone your fork locally.
-
-3. **Create a branch**  
+3. **Create a branch**
    ```bash
    git checkout -b fix/your-fix   # or feature/your-feature
    ```
-
-4. **Make changes**  
-   - Follow existing style (format with `go fmt`).  
-   - Keep commits logical and messages clear (e.g. “Add validation for plan ID”).
-
-5. **Run checks**  
+4. **Make changes**
+   - Follow existing style (format with `go fmt`).
+   - Keep commits logical and messages clear (e.g. "Add validation for plan ID").
+5. **Run checks**
    ```bash
    go build ./...
    go vet ./...
    go fmt ./...
-   ```  
+   ```
    Add or run tests if the project has them.
-
-6. **Commit**  
+6. **Commit**
    - Prefer small, atomic commits (one logical change per commit).
-
-7. **Push and open a PR**  
+7. **Push and open a PR**
    ```bash
    git push origin fix/your-fix
-   ```  
-   - Open a Pull Request against the main branch.  
-   - Fill in the PR template (if any).  
-   - Link related issues.  
+   ```
+   - Open a Pull Request against the main branch.
+   - Fill in the PR template (if any).
+   - Link related issues.
    - Describe what you changed and why.
-
-8. **Review**  
+8. **Review**
    - Address review comments. Maintainers will merge when everything looks good.
 
 ### Development workflow
@@ -179,32 +190,34 @@ We welcome contributions from the community. Below is a short guide to get you f
 
 ### Project standards
 
-- **Go:** `go fmt`, `go vet`, no unnecessary dependencies.  
-- **APIs:** Keep JSON shape stable; document breaking changes in PRs.  
+- **Go:** `go fmt`, `go vet`, no unnecessary dependencies.
+- **APIs:** Keep JSON shape stable; document breaking changes in PRs.
 - **Secrets:** Never commit `.env`, keys, or passwords.
 
 ---
 
 ## Project layout
 
-```
+```text
 stellabill-backend/
-├── cmd/
-│   └── server/
-│       └── main.go          # Entry point, Gin router, server start
-├── internal/
-│   ├── config/
-│   │   └── config.go        # Loads ENV, PORT, DATABASE_URL, JWT_SECRET
-│   ├── handlers/
-│   │   ├── health.go        # GET /api/health
-│   │   ├── plans.go         # GET /api/plans
-│   │   └── subscriptions.go # GET /api/subscriptions, /api/subscriptions/:id
-│   └── routes/
-│       └── routes.go        # Registers routes and CORS middleware
-├── go.mod
-├── go.sum
-├── .gitignore
-└── README.md
+|-- cmd/
+|   `-- server/
+|       `-- main.go          # Entry point and startup wiring
+|-- internal/
+|   |-- config/
+|   |   `-- config.go        # Loads ENV, PORT, DATABASE_URL, JWT_SECRET
+|   |-- handlers/
+|   |   |-- handler.go       # Handler constructor and dependency validation
+|   |   |-- health.go        # GET /api/health
+|   |   |-- plans.go         # GET /api/plans
+|   |   `-- subscriptions.go # GET /api/subscriptions, /api/subscriptions/:id
+|   |-- routes/
+|   |   `-- routes.go        # Registers routes with injected handlers
+|   `-- services/
+|       `-- services.go      # Service interfaces and default implementations
+|-- go.mod
+|-- go.sum
+`-- README.md
 ```
 
 ---

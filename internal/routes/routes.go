@@ -1,20 +1,35 @@
 package routes
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"stellarbill-backend/internal/handlers"
 )
 
-func Register(r *gin.Engine) {
+type Dependencies struct {
+	Handler *handlers.Handler
+}
+
+func Register(r *gin.Engine, deps Dependencies) error {
+	switch {
+	case r == nil:
+		return errors.New("router is required")
+	case deps.Handler == nil:
+		return errors.New("handler is required")
+	}
+
 	r.Use(corsMiddleware())
 
 	api := r.Group("/api")
 	{
-		api.GET("/health", handlers.Health)
-		api.GET("/subscriptions", handlers.ListSubscriptions)
-		api.GET("/subscriptions/:id", handlers.GetSubscription)
-		api.GET("/plans", handlers.ListPlans)
+		api.GET("/health", deps.Handler.Health)
+		api.GET("/subscriptions", deps.Handler.ListSubscriptions)
+		api.GET("/subscriptions/:id", deps.Handler.GetSubscription)
+		api.GET("/plans", deps.Handler.ListPlans)
 	}
+
+	return nil
 }
 
 func corsMiddleware() gin.HandlerFunc {

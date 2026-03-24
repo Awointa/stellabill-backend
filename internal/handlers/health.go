@@ -1,14 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
-func Health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"service": "stellarbill-backend",
-	})
+func (h *Handler) Health(c *gin.Context) {
+	ctx := context.Background()
+	if c.Request != nil {
+		ctx = c.Request.Context()
+	}
+
+	c.JSON(http.StatusOK, h.healthService.GetStatus(ctx))
 }

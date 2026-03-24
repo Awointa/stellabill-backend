@@ -6,7 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"stellarbill-backend/internal/config"
+	"stellarbill-backend/internal/handlers"
 	"stellarbill-backend/internal/routes"
+	"stellarbill-backend/internal/services"
 )
 
 func main() {
@@ -15,8 +17,10 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	router := gin.Default()
-	routes.Register(router)
+	router, err := newRouter()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	addr := ":" + cfg.Port
 	if p := os.Getenv("PORT"); p != "" {
@@ -26,4 +30,22 @@ func main() {
 	if err := router.Run(addr); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func newRouter() (*gin.Engine, error) {
+	handler, err := handlers.New(handlers.Dependencies{
+		HealthService:       services.NewStaticHealthService("stellarbill-backend"),
+		PlanService:         services.NewStaticPlanService(nil),
+		SubscriptionService: services.NewPlaceholderSubscriptionService(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	router := gin.Default()
+	if err := routes.Register(router, routes.Dependencies{Handler: handler}); err != nil {
+		return nil, err
+	}
+
+	return router, nil
 }
