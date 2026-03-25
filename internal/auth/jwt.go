@@ -1,88 +1,105 @@
 package auth
 
 import (
-	"time"
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// TokenGenerator generates JWT tokens for testing and use
-type TokenGenerator struct {
-	jwtSecret string
+type contextKey string
+
+const PrincipalKey contextKey = "principal"
+
+// ErrorResponse standardizes auth error output
+type ErrorResponse struct {
+	Error string `json:"error"`
 }
 
-// NewTokenGenerator creates a new token generator
-func NewTokenGenerator(jwtSecret string) *TokenGenerator {
-	return &TokenGenerator{jwtSecret: jwtSecret}
+// Config holds JWT requirements
+type Config struct {
+	Secret   []byte
+	Issuer   string
+	Audience string
 }
 
-// GenerateToken creates a signed JWT token
-func (tg *TokenGenerator) GenerateToken(userID, email, role, merchantID string, roles []string, expiresAt time.Time) (string, error) {
-	claims := &Claims{
-		UserID:     userID,
-		Email:      email,
-		Role:       role,
-		Roles:      roles,
-		MerchantID: merchantID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expiresAt),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-		},
+// Claims represents our custom JWT structure
+type Claims struct {
+	UserID string `json:"user_id"`
+	jwt.RegisteredClaims
+}
+
+// JWTMiddleware creates a middleware verifying tokens against the provided config
+func JWTMiddleware(cfg Config) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				respondWithError(w, http.StatusUnauthorized, "missing authorization header")
+				return
+			}
+
+			// Expecting "Bearer <token>"
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				respondWithError(w, http.StatusUnauthorized, "invalid authorization format")
+				return
+			}
+
+			tokenString := parts[1]
+			claims := &Claims{}
+
+			token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+				// Validate the signing algorithm
+				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+					return nil, errors.New("unexpected signing method")
+				}
+				return cfg.Secret, nil
+			})
+
+			if err != nil || !token.Valid {
+				respondWithError(w, http.StatusUnauthorized, "invalid or expired token")
+				return
+			}
+
+			// Validate Issuer and Audience if configured
+			if cfg.Issuer != "" && claims.Issuer != cfg.Issuer {
+				respondWithError(w, http.StatusUnauthorized, "invalid issuer")
+				return
+			}
+			if cfg.Audience != "" && !stringInSlice(cfg.Audience, claims.Audience) {
+				respondWithError(w, http.StatusUnauthorized, "invalid audience")
+				return
+			}
+
+			// Attach principal to request context
+			ctx := context.WithValue(r.Context(), PrincipalKey, claims.UserID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(tg.jwtSecret))
 }
 
-// GenerateAdminToken creates a token with admin role
-func (tg *TokenGenerator) GenerateAdminToken(userID, email string) (string, error) {
-	return tg.GenerateToken(userID, email, RoleAdmin, "", []string{RoleAdmin}, time.Now().Add(1*time.Hour))
+// GetPrincipal safely extracts the user ID from the context in downstream handlers
+func GetPrincipal(ctx context.Context) (string, bool) {
+	val, ok := ctx.Value(PrincipalKey).(string)
+	return val, ok
 }
 
-// GenerateMerchantToken creates a token with merchant role
-func (tg *TokenGenerator) GenerateMerchantToken(userID, email, merchantID string) (string, error) {
-	return tg.GenerateToken(userID, email, RoleMerchant, merchantID, []string{RoleMerchant}, time.Now().Add(1*time.Hour))
+// respondWithError ensures standardized JSON output for auth failures
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(ErrorResponse{Error: msg})
 }
 
-// GenerateCustomerToken creates a token with customer role
-func (tg *TokenGenerator) GenerateCustomerToken(userID, email string) (string, error) {
-	return tg.GenerateToken(userID, email, RoleCustomer, "", []string{RoleCustomer}, time.Now().Add(1*time.Hour))
-}
-
-// GenerateExpiredToken creates an expired token
-func (tg *TokenGenerator) GenerateExpiredToken(userID, email, role string) (string, error) {
-	return tg.GenerateToken(userID, email, role, "", []string{role}, time.Now().Add(-1*time.Hour))
-}
-
-// GenerateTokenWithoutRoles creates a token without roles/role field
-func (tg *TokenGenerator) GenerateTokenWithoutRoles(userID, email string) (string, error) {
-	claims := &Claims{
-		UserID: userID,
-		Email:  email,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-		},
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(tg.jwtSecret))
-}
-
-// GenerateTokenWithoutUserID creates a token without user_id
-func (tg *TokenGenerator) GenerateTokenWithoutUserID(email, role string) (string, error) {
-	claims := &Claims{
-		Email: email,
-		Role:  role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(tg.jwtSecret))
+	return false
 }
