@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"database/sql"
+
 	"github.com/gin-gonic/gin"
 	"stellarbill-backend/internal/audit"
 	"stellarbill-backend/internal/config"
@@ -91,6 +93,19 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+
+	logger.Init()
+
+	r := gin.New()
+
+	r.Use(middleware.RecoveryLogger())
+	r.Use(middleware.RequestLogger())
+
+	var db *sql.DB = nil // existing or future DB
+
+	routes.RegisterRoutes(r, db)
+
+	r.Run()
 }
 
 func newRouter() *gin.Engine {
