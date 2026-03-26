@@ -19,6 +19,16 @@ func Register(r *gin.Engine) {
 	cfg := config.Load()
 	corsProfile := cors.ProfileForEnv(cfg.Env, cfg.AllowedOrigins)
 
+	// Apply rate limiting middleware
+	rateLimitConfig := middleware.RateLimiterConfig{
+		Enabled:        cfg.RateLimitEnabled,
+		Mode:           middleware.RateLimitMode(cfg.RateLimitMode),
+		RequestsPerSec: int64(cfg.RateLimitRPS),
+		BurstSize:      int64(cfg.RateLimitBurst),
+		WhitelistPaths: cfg.RateLimitWhitelist,
+	}
+	r.Use(middleware.RateLimitMiddleware(rateLimitConfig))
+
 	r.Use(cors.Middleware(corsProfile))
 
 	store := idempotency.NewStore(idempotency.DefaultTTL)
@@ -70,6 +80,4 @@ func Register(r *gin.Engine) {
 			admin.POST("/purge", adminHandler.PurgeCache)
 		}
 	}
-
-	return nil
 }
