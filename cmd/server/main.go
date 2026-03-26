@@ -16,20 +16,14 @@ import (
 	"stellarbill-backend/internal/services"
 )
 
+var listenAndServe = func(srv *http.Server) error {
+	return srv.ListenAndServe()
+}
+
 func main() {
-	// Load configuration with strict validation
 	cfg, err := config.Load()
 	if err != nil {
-		// Fail fast with descriptive error
-		fmt.Fprintf(os.Stderr, "ERROR: Configuration validation failed: %s\n", err.Error())
-		fmt.Fprintln(os.Stderr, "\nRequired environment variables:")
-		for _, key := range config.GetRequiredEnvVars() {
-			fmt.Fprintf(os.Stderr, "  - %s\n", key)
-		}
-		fmt.Fprintln(os.Stderr, "\nOptional environment variables and defaults:")
-		for key, val := range config.GetOptionalEnvVars() {
-			fmt.Fprintf(os.Stderr, "  - %s (default: %s)\n", key, val)
-		}
+		printConfigError(err)
 		os.Exit(1)
 	}
 
@@ -51,6 +45,7 @@ func main() {
 		gin.SetMode(gin.TestMode)
 		logger.Info("Running in test mode", zap.String("env", cfg.Env))
 	}
+}
 
 	// Log config warnings
 	if vResult := cfg.Validate(); len(vResult.Warnings) > 0 {

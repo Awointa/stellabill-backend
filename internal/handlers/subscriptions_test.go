@@ -16,9 +16,13 @@ type mockSubscriptionService struct {
 	detail   *service.SubscriptionDetail
 	warnings []string
 	err      error
+	callerID string
+	id       string
 }
 
-func (m *mockSubscriptionService) GetDetail(_ context.Context, _, _ string) (*service.SubscriptionDetail, []string, error) {
+func (m *mockSubscriptionService) GetDetail(_ context.Context, callerID, id string) (*service.SubscriptionDetail, []string, error) {
+	m.callerID = callerID
+	m.id = id
 	return m.detail, m.warnings, m.err
 }
 
@@ -94,6 +98,65 @@ func TestGetSubscription_EmptyID_Returns400(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&body)
 	if body["error"] == "" {
 		t.Error("expected error field in response body")
+	}
+}
+
+func TestGetSubscription_RejectsUnexpectedQueryParams_Returns400(t *testing.T) {
+	svc := &mockSubscriptionService{}
+	r := setupRouter(svc, true)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/subscriptions/sub-1?expand=plan", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if svc.id != "" {
+		t.Fatalf("service should not be called, got id %q", svc.id)
+	}
+}
+
+func TestGetSubscription_RejectsEncodedPayloadID_Returns400(t *testing.T) {
+	svc := &mockSubscriptionService{}
+	r := setupRouter(svc, true)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/subscriptions/%3Cscript%3E", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if svc.id != "" {
+		t.Fatalf("service should not be called, got id %q", svc.id)
+	}
+}
+
+func TestGetSubscription_NormalizesUnicodeID_BeforeServiceCall(t *testing.T) {
+	svc := &mockSubscriptionService{
+		detail: &service.SubscriptionDetail{
+			ID:       "sub-1",
+			PlanID:   "plan-1",
+			Customer: "caller-123",
+			Status:   "active",
+			Interval: "monthly",
+		},
+	}
+	r := setupRouter(svc, true)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/subscriptions/%EF%BD%93%EF%BD%95%EF%BD%82%EF%BC%8D%EF%BC%91", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+	if svc.id != "sub-1" {
+		t.Fatalf("expected normalized id sub-1, got %q", svc.id)
+	}
+	if svc.callerID != "caller-123" {
+		t.Fatalf("expected callerID caller-123, got %q", svc.callerID)
 	}
 }
 

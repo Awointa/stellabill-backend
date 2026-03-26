@@ -71,6 +71,20 @@ func NewWorker(store JobStore, executor JobExecutor, config Config) *Worker {
 	}
 }
 
+// GetMetrics returns a snapshot of the current worker metrics.
+func (w *Worker) GetMetrics() Metrics {
+	w.metrics.mu.RLock()
+	defer w.metrics.mu.RUnlock()
+
+	return Metrics{
+		JobsProcessed:    w.metrics.JobsProcessed,
+		JobsSucceeded:    w.metrics.JobsSucceeded,
+		JobsFailed:       w.metrics.JobsFailed,
+		JobsDeadLettered: w.metrics.JobsDeadLettered,
+		LastPollTime:     w.metrics.LastPollTime,
+	}
+}
+
 // Start begins the worker's scheduling loop
 func (w *Worker) Start() {
 	w.wg.Add(1)
@@ -85,14 +99,14 @@ func (w *Worker) Stop() error {
 	security.ProductionLogger().Info("Worker shutting down",
 		zap.String("worker_id", w.config.WorkerID))
 	w.cancel()
-	
+
 	// Wait for graceful shutdown with timeout
 	done := make(chan struct{})
 	go func() {
 		w.wg.Wait()
 		close(done)
 	}()
-	
+
 	select {
 	case <-done:
 		security.ProductionLogger().Info("Worker stopped gracefully",
@@ -106,7 +120,7 @@ func (w *Worker) Stop() error {
 // schedulerLoop continuously polls for pending jobs
 func (w *Worker) schedulerLoop() {
 	defer w.wg.Done()
-	
+
 	ticker := time.NewTicker(w.config.PollInterval)
 	defer ticker.Stop()
 
@@ -142,7 +156,7 @@ func (w *Worker) pollAndDispatch() {
 				zap.Error(err))
 			continue
 		}
-		
+
 		if !acquired {
 			// Another worker has this job
 			continue
@@ -180,7 +194,7 @@ func (w *Worker) executeJob(job *Job) {
 	defer cancel()
 
 	err := w.executor.Execute(execCtx, job)
-	
+
 	if err != nil {
 		w.handleJobFailure(job, err)
 	} else {
@@ -194,7 +208,7 @@ func (w *Worker) handleJobSuccess(job *Job) {
 	now := time.Now()
 	job.CompletedAt = &now
 	job.LastError = ""
-	
+
 	if err := w.store.Update(job); err != nil {
 		security.ProductionLogger().Error("Error updating job to completed",
 			zap.String("job_id", job.ID),
@@ -213,13 +227,13 @@ func (w *Worker) handleJobSuccess(job *Job) {
 // handleJobFailure implements retry logic with dead-letter queue
 func (w *Worker) handleJobFailure(job *Job, execErr error) {
 	job.LastError = execErr.Error()
-	
+
 	if job.Attempts >= w.config.MaxAttempts {
 		// Move to dead-letter queue
 		job.Status = JobStatusDeadLetter
 		now := time.Now()
 		job.CompletedAt = &now
-		
+
 		w.metrics.mu.Lock()
 		w.metrics.JobsDeadLettered++
 		w.metrics.mu.Unlock()
@@ -233,7 +247,7 @@ func (w *Worker) handleJobFailure(job *Job, execErr error) {
 		job.Status = JobStatusPending
 		backoff := time.Duration(job.Attempts*job.Attempts) * time.Second
 		job.ScheduledAt = time.Now().Add(backoff)
-		
+
 		w.metrics.mu.Lock()
 		w.metrics.JobsFailed++
 		w.metrics.mu.Unlock()
@@ -245,7 +259,7 @@ func (w *Worker) handleJobFailure(job *Job, execErr error) {
 			zap.Duration("backoff", backoff),
 			zap.Error(execErr))
 	}
-	
+
 	if err := w.store.Update(job); err != nil {
 		security.ProductionLogger().Error("Error updating failed job",
 			zap.String("job_id", job.ID),
