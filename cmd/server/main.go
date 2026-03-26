@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"stellarbill-backend/internal/config"
 	"stellarbill-backend/internal/routes"
+	"stellarbill-backend/internal/shutdown"
 )
 
 func main() {
@@ -81,8 +83,48 @@ func main() {
 	log.Printf("Server timeouts - Read: %ds, Write: %ds, Idle: %ds", 
 		cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
 
-	// Start server with fail-fast behavior
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Failed to start server: %v", err)
+	// Initialize graceful shutdown orchestrator
+	// Shutdown timeout: 30 seconds (total time for all cleanup)
+	// Drain timeout: 20 seconds (time to wait for in-flight requests)
+	gracefulShutdown := shutdown.NewGracefulShutdown(
+		srv,
+		30*time.Second,
+		20*time.Second,
+	)
+
+	// Register cleanup callbacks in reverse order of initialization
+	gracefulShutdown.OnShutdown(func(ctx context.Context) error {
+		log.Println("Cleanup callback: Releasing resources...")
+		// Add any additional cleanup logic here
+		// e.g., database connection pools, caches, etc.
+		return nil
+	})
+
+	// Start server in a background goroutine
+	serverErrors := make(chan error, 1)
+	go func() {
+		log.Println("Listening for connections...")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErrors <- err
+		}
+	}()
+
+	// Start signal listener (blocks until shutdown is triggered)
+	go gracefulShutdown.ListenForShutdownSignals()
+
+	// Wait for either a server error or shutdown completion
+	select {
+	case err := <-serverErrors:
+		log.Fatalf("Server error: %v", err)
+	case <-func() <-chan struct{} {
+		// Wait for graceful shutdown to complete
+		done := make(chan struct{})
+		go func() {
+			gracefulShutdown.Wait()
+			close(done)
+		}()
+		return done
+	}():
+		log.Println("Server shutdown completed successfully")
 	}
 }
