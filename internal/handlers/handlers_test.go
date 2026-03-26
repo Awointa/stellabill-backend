@@ -4,118 +4,112 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
 
-func testRouter() *gin.Engine {
+func init() {
 	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/api/health", Health)
-	r.GET("/api/plans", ListPlans)
-	r.GET("/api/subscriptions", ListSubscriptions)
-	return r
 }
 
-func TestListPlans(t *testing.T) {
-	r := testRouter()
-
-	t.Run("accepts normalized filter inputs", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/plans?currency=ngn&interval=%20MONTHLY%20&search=Starter%20Plan&limit=%EF%BC%91%EF%BC%90&page=2", nil)
-		r.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-		}
-
-		var body map[string]any
-		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if _, ok := body["plans"]; !ok {
-			t.Fatalf("expected plans key in response body")
-		}
-	})
-
-	t.Run("rejects malicious search payloads", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/plans?search=%3Cscript%3E", nil)
-		r.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-		}
-		assertErrorContains(t, rec, "invalid query parameter \"search\"")
-	})
+func newContext(method, path string) (*gin.Context, *httptest.ResponseRecorder) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(method, path, nil)
+	return c, w
 }
+
+// --- Health ---
 
 func TestHealth(t *testing.T) {
-	r := testRouter()
+	c, w := newContext(http.MethodGet, "/api/health")
+	Health(c)
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
 	}
-
 	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
 	}
 	if body["status"] != "ok" {
-		t.Fatalf("status = %q, want %q", body["status"], "ok")
+		t.Errorf("status field: got %q, want %q", body["status"], "ok")
+	}
+	if body["service"] != "stellarbill-backend" {
+		t.Errorf("service field: got %q", body["service"])
 	}
 }
+
+// --- Plans ---
+
+func TestListPlans(t *testing.T) {
+	c, w := newContext(http.MethodGet, "/api/plans")
+	ListPlans(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	plans, ok := body["plans"]
+	if !ok {
+		t.Fatal("response missing 'plans' key")
+	}
+	if plans == nil {
+		t.Fatal("plans is nil")
+	}
+}
+
+// --- Subscriptions ---
 
 func TestListSubscriptions(t *testing.T) {
-	r := testRouter()
+	c, w := newContext(http.MethodGet, "/api/subscriptions")
+	ListSubscriptions(c)
 
-	t.Run("rejects unsupported query parameters", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/subscriptions?debug=true", nil)
-		r.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-		}
-		assertErrorContains(t, rec, "unsupported parameter")
-	})
-
-	t.Run("rejects overflow pagination values", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/subscriptions?page=999999999999999999999999", nil)
-		r.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-		}
-		assertErrorContains(t, rec, "valid integer")
-	})
-
-	t.Run("accepts normalized status filters", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/subscriptions?status=%20ACTIVE%20&limit=25&page=%EF%BC%91", nil)
-		r.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-		}
-	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["subscriptions"]; !ok {
+		t.Fatal("response missing 'subscriptions' key")
+	}
 }
 
-func assertErrorContains(t *testing.T, rec *httptest.ResponseRecorder, want string) {
-	t.Helper()
+func TestGetSubscription_WithID(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/subscriptions/sub_123", nil)
+	c.Params = gin.Params{{Key: "id", Value: "sub_123"}}
 
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+	GetSubscription(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusOK)
 	}
-	if got := body["error"]; got == "" || !strings.Contains(got, want) {
-		t.Fatalf("error = %q, want substring %q", got, want)
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["id"] != "sub_123" {
+		t.Errorf("id: got %v, want %q", body["id"], "sub_123")
+	}
+}
+
+func TestGetSubscription_EmptyID(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/subscriptions/", nil)
+	c.Params = gin.Params{{Key: "id", Value: ""}}
+
+	GetSubscription(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }

@@ -280,17 +280,11 @@ func BenchmarkListSubscriptions_Parallel_Medium(b *testing.B) {
 func BenchmarkGetSubscription_FullHTTP(b *testing.B) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/api/subscriptions/:id", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"id":           c.Param("id"),
-			"plan_id":      "plan_placeholder",
-			"customer":     "customer_placeholder",
-			"status":       "placeholder",
-			"amount":       "0",
-			"interval":     "monthly",
-			"next_billing": "2026-04-01T00:00:00Z",
-		})
+	router.Use(func(c *gin.Context) {
+		c.Set("callerID", "bench-caller")
+		c.Next()
 	})
+	router.GET("/api/subscriptions/:id", NewGetSubscriptionHandler(&mockSubscriptionService{}))
 
 	b.ResetTimer()
 	b.ReportAllocs()

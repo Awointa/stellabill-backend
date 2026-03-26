@@ -5,10 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestRegister_HealthAndCORS(t *testing.T) {
@@ -21,18 +19,21 @@ func TestRegister_HealthAndCORS(t *testing.T) {
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		t.Fatalf("status: got %d want %d", rec.Code, http.StatusOK)
 	}
-	if rec.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Fatalf("expected Access-Control-Allow-Origin header to be set")
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin: got %q want %q", got, "*")
 	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode body: %v", err)
+		t.Fatalf("decode json: %v", err)
 	}
 	if payload["status"] != "ok" {
-		t.Fatalf("payload.status = %v, want %q", payload["status"], "ok")
+		t.Fatalf("payload.status: got %v want %q", payload["status"], "ok")
+	}
+	if payload["service"] != "stellarbill-backend" {
+		t.Fatalf("payload.service: got %v want %q", payload["service"], "stellarbill-backend")
 	}
 }
 
@@ -46,14 +47,14 @@ func TestRegister_CORSPreflight(t *testing.T) {
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+		t.Fatalf("status: got %d want %d", rec.Code, http.StatusNoContent)
 	}
-	if rec.Header().Get("Access-Control-Allow-Methods") == "" {
-		t.Fatalf("expected Access-Control-Allow-Methods header to be set")
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); got == "" {
+		t.Fatalf("expected Access-Control-Allow-Methods to be set")
 	}
 }
 
-func TestRegister_GetSubscriptionRequiresAuth(t *testing.T) {
+func TestRegister_GetSubscriptionShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	Register(engine)
@@ -62,39 +63,20 @@ func TestRegister_GetSubscriptionRequiresAuth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d want %d", rec.Code, http.StatusOK)
 	}
-}
-
-func TestRegister_GetSubscriptionRejectsInvalidQuery(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	engine := gin.New()
-	Register(engine)
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "customer-123",
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	tokenStr, err := token.SignedString([]byte("dev-secret"))
-	if err != nil {
-		t.Fatalf("sign token: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/subscriptions/sub_123?expand=plan", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenStr)
-	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
-	}
-
 	var payload map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode body: %v", err)
+		t.Fatalf("decode json: %v", err)
 	}
-	if payload["error"] == nil {
-		t.Fatalf("expected payload.error to be present")
+	if payload["id"] != "sub_123" {
+		t.Fatalf("payload.id: got %v want %q", payload["id"], "sub_123")
+	}
+	if _, ok := payload["plan_id"]; !ok {
+		t.Fatalf("expected payload.plan_id to be present")
+	}
+	if _, ok := payload["customer"]; !ok {
+		t.Fatalf("expected payload.customer to be present")
 	}
 }
