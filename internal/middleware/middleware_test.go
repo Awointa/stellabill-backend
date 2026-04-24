@@ -22,7 +22,7 @@ func TestProtectedChainContextPropagationAndLogging(t *testing.T) {
 	limiter := NewRateLimiter(5, time.Minute)
 
 	// Use a trusted proxy so the inbound X-Request-ID is accepted.
-	_, trustedCIDR, _ := net.ParseCIDR("127.0.0.1/32")
+	_, trustedCIDR, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg := RequestIDConfig{TrustedProxies: []net.IPNet{*trustedCIDR}}
 
 	router := gin.New()
@@ -155,7 +155,7 @@ func TestAuthFailureShortCircuitsWithRequestID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Use a trusted proxy so the inbound X-Request-ID is accepted.
-	_, trustedCIDR, _ := net.ParseCIDR("127.0.0.1/32")
+	_, trustedCIDR, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg := RequestIDConfig{TrustedProxies: []net.IPNet{*trustedCIDR}}
 
 	router := gin.New()
@@ -183,7 +183,7 @@ func TestRateLimitShortCircuits(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Use a trusted proxy so the inbound X-Request-ID is accepted.
-	_, trustedCIDR, _ := net.ParseCIDR("127.0.0.1/32")
+	_, trustedCIDR, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg := RequestIDConfig{TrustedProxies: []net.IPNet{*trustedCIDR}}
 
 	router := gin.New()
@@ -218,7 +218,7 @@ func TestRecoveryReturnsStructuredError(t *testing.T) {
 	logger := log.New(&logs, "", 0)
 
 	// Use a trusted proxy so the inbound X-Request-ID is accepted.
-	_, trustedCIDR, _ := net.ParseCIDR("127.0.0.1/32")
+	_, trustedCIDR, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg := RequestIDConfig{TrustedProxies: []net.IPNet{*trustedCIDR}}
 
 	router := gin.New()

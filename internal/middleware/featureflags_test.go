@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -148,22 +147,23 @@ func TestFeatureFlag_CustomResponse(t *testing.T) {
 
 func TestConditionalFeatureFlag_ConditionTrue(t *testing.T) {
 	router := setupTestRouter()
-	
-	featureflags.SetFlag("test_conditional", false, "")
-	
+
+	// Flag is enabled; condition returns true → request passes through
+	featureflags.SetFlag("test_conditional_enabled", true, "")
+
 	condition := func(c *gin.Context) bool {
 		return c.GetHeader("X-Test-Condition") == "true"
 	}
-	
-	router.GET("/test", ConditionalFeatureFlag("test_conditional", condition), func(c *gin.Context) {
+
+	router.GET("/test", ConditionalFeatureFlag("test_conditional_enabled", condition), func(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "success"})
 	})
-	
+
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("X-Test-Condition", "true")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != 200 {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}

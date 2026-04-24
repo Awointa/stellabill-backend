@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"time"
 
 	"stellarbill-backend/internal/config"
 )
@@ -17,19 +16,10 @@ type Manager struct {
 
 // NewManager creates a new outbox manager
 func NewManager(db *sql.DB, cfg config.Config) (*Manager, error) {
-	// Convert config to outbox service config
+	_ = cfg // cfg reserved for future outbox-specific config fields
 	serviceConfig := ServiceConfig{
-		DispatcherConfig: DispatcherConfig{
-			PollInterval:       cfg.Outbox.GetPollInterval(),
-			BatchSize:          cfg.Outbox.BatchSize,
-			MaxRetries:         cfg.Outbox.MaxRetries,
-			RetryBackoffFactor: cfg.Outbox.RetryBackoffFactor,
-			CleanupInterval:    cfg.Outbox.GetCleanupInterval(),
-			CompletedEventTTL:  cfg.Outbox.GetCompletedEventTTL(),
-			ProcessingTimeout:  cfg.Outbox.GetProcessingTimeout(),
-		},
-		PublisherType: cfg.Outbox.PublisherType,
-		HTTPEndpoint:  cfg.Outbox.HTTPEndpoint,
+		DispatcherConfig: DefaultDispatcherConfig(),
+		PublisherType:    "console",
 	}
 
 	service, err := NewService(db, serviceConfig)

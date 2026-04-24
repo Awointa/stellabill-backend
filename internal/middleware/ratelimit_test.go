@@ -493,11 +493,10 @@ func TestRateLimiter_CleanupExpiredBuckets(t *testing.T) {
 	}
 	rl.mutex.Unlock()
 
-	// Trigger cleanup
-	rl.cleanupExpiredBuckets()
-
-	// Should have 0 buckets after cleanup
-	time.Sleep(100 * time.Millisecond) // Give cleanup time to run
+	// Trigger cleanup by sending to the cleanup ticker channel directly
+	// (instead of calling cleanupExpiredBuckets which blocks on the ticker)
+	rl.cleanup.Reset(1 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	rl.mutex.RLock()
 	assert.Equal(t, 0, len(rl.buckets))
 	rl.mutex.RUnlock()

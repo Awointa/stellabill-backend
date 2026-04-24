@@ -197,7 +197,7 @@ type SubscriptionCreated struct {
 	CustomerID   string    `json:"customer_id"`
 	PlanID       string    `json:"plan_id"`
 	Status       string    `json:"status"`
-	OccurredAt   time.Time `json:"occurred_at"`
+	EventOccurredAt time.Time `json:"occurred_at"`
 }
 
 func (e SubscriptionCreated) EventType() string {
@@ -218,17 +218,17 @@ func (e SubscriptionCreated) AggregateType() *string {
 }
 
 func (e SubscriptionCreated) OccurredAt() time.Time {
-	return e.OccurredAt
+	return e.EventOccurredAt
 }
 
 // PaymentProcessed represents a payment processed event
 type PaymentProcessed struct {
-	ID           string    `json:"id"`
-	SubscriptionID string   `json:"subscription_id"`
-	Amount       float64   `json:"amount"`
-	Currency     string    `json:"currency"`
-	Status       string    `json:"status"`
-	OccurredAt   time.Time `json:"occurred_at"`
+	ID             string    `json:"id"`
+	SubscriptionID string    `json:"subscription_id"`
+	Amount         float64   `json:"amount"`
+	Currency       string    `json:"currency"`
+	Status         string    `json:"status"`
+	EventOccurredAt time.Time `json:"occurred_at"`
 }
 
 func (e PaymentProcessed) EventType() string {
@@ -249,5 +249,5 @@ func (e PaymentProcessed) AggregateType() *string {
 }
 
 func (e PaymentProcessed) OccurredAt() time.Time {
-	return e.OccurredAt
+	return e.EventOccurredAt
 }

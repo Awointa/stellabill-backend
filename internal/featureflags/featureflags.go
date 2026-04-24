@@ -2,7 +2,6 @@ package featureflags
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -224,4 +223,9 @@ func IsEnabled(flagName string) bool {
 
 func IsEnabledWithDefault(flagName string, defaultValue bool) bool {
 	return GetInstance().IsEnabledWithDefault(flagName, defaultValue)
+}
+
+// SetFlag sets a feature flag on the global instance (convenience wrapper for tests).
+func SetFlag(flagName string, enabled bool, description string) {
+	GetInstance().SetFlag(flagName, enabled, description)
 }
